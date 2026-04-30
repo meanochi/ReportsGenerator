@@ -1,2 +1,5 @@
-reportlab==4.0.8v
+reportlab==4.0.8
 PyMuPDF==1.23.8
+pytesseract
+pdf2image
+pandas

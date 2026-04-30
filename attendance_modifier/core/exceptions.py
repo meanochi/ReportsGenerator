@@ -9,3 +9,7 @@ class ClassificationError(AttendanceAppError):
 class ParsingError(AttendanceAppError):
     """Raised when parsing the report text fails."""
     pass
+
+class TransformationError(AttendanceAppError):
+    """Raised when a transformed row fails validation."""
+    pass

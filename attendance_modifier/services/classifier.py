@@ -29,13 +29,16 @@ class ReportClassifier:
             return ReportType.TYPE_B
             
         # אם המערכת עדיין לא בטוחה, ננסה את מילות המפתח בתור גיבוי (Fallback)
-        def is_match(keyword: str) -> bool:
-            return keyword in raw_text or keyword[::-1] in raw_text
-
-        if is_match("ג.ע. הנשר") or is_match("הנשר כח אדם"):
+        # Keyword fallback — match stable substrings that survive OCR noise
+        if "הנשר" in raw_text:
             return ReportType.TYPE_A
-        elif is_match("כרטיס עובד") or is_match("סה\"כימיעבודה"): # הותאם ל-OCR
+        if "כרטיס עובד" in raw_text or "כרטיס" in raw_text:
             return ReportType.TYPE_B
+
+        # Structural fallback — Type A rows: "<digit> יום <day-name>"
+        TYPE_A_ROW_PATTERN = re.compile(r'\d+\s+יום\s+\S+')
+        if len(TYPE_A_ROW_PATTERN.findall(raw_text)) > 2:
+            return ReportType.TYPE_A
         
         # הדפסת DEBUG במקרה של כישלון מוחלט
         print("\n--- DEBUG: Text extracted from PDF (First 300 chars) ---")

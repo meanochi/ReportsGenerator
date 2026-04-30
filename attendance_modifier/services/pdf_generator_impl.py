@@ -16,15 +16,20 @@ class PDFGeneratorImpl(IPDFGenerator):
         self._register_hebrew_font()
 
     def _register_hebrew_font(self):
-        try:
-            font_path = "C:\\Windows\\Fonts\\arial.ttf" if os.name == 'nt' else "Arial.ttf"
+        candidates = [
+            "C:\\Windows\\Fonts\\arial.ttf",           # Windows
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",  # Docker/Linux (fonts-freefont-ttf)
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # fallback Linux
+        ]
+        for font_path in candidates:
             if os.path.exists(font_path):
-                pdfmetrics.registerFont(TTFont('HebrewFont', font_path))
-                self.font_name = 'HebrewFont'
-            else:
-                self.font_name = 'Helvetica'
-        except Exception:
-            self.font_name = 'Helvetica'
+                try:
+                    pdfmetrics.registerFont(TTFont('HebrewFont', font_path))
+                    self.font_name = 'HebrewFont'
+                    return
+                except Exception:
+                    continue
+        self.font_name = 'Helvetica'
 
     def _reverse_hebrew(self, text: str) -> str:
         return text[::-1]
@@ -109,7 +114,7 @@ class PDFGeneratorImpl(IPDFGenerator):
             
             row_data = [
                 row.date,
-                self._get_hebrew_day(row.date),           # <--- שאיבת היום המחושב
+                self._reverse_hebrew(row.day_name) if row.day_name else "",
                 self._reverse_hebrew("כללי"), 
                 row.new_in,
                 row.new_out,

@@ -11,6 +11,9 @@ class AttendanceRow:
     raw_text_line: str
     new_in: Optional[str] = None
     new_out: Optional[str] = None
+    break_minutes: Optional[int] = None
+    overtime_hours: Optional[float] = None
+    day_name: Optional[str] = None
 
 @dataclass
 class AttendanceReport:
