@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.git/
+.gitignore
+tests/
+*.log
+ocr_debug.txt
+ocr2.txt
+page_debug.png

@@ -1,0 +1,157 @@
+import os
+from datetime import datetime
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from src.app.contracts.pdf_generator import IPDFGenerator
+from src.domain.enums import ReportType
+from src.domain.models import AttendanceReport
+
+
+class PDFGeneratorImpl(IPDFGenerator):
+    def __init__(self):
+        self._register_hebrew_font()
+
+    def _register_hebrew_font(self):
+        candidates = [
+            "C:\\Windows\\Fonts\\arial.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for font_path in candidates:
+            if os.path.exists(font_path):
+                try:
+                    pdfmetrics.registerFont(TTFont("HebrewFont", font_path))
+                    self.font_name = "HebrewFont"
+                    return
+                except Exception:
+                    continue
+        self.font_name = "Helvetica"
+
+    @staticmethod
+    def _reverse_hebrew(text: str) -> str:
+        return text[::-1]
+
+    def _get_hebrew_day(self, date_str: str) -> str:
+        clean_date = date_str.replace("-", "/")
+        try:
+            dt = datetime.strptime(clean_date, "%d/%m/%Y")
+        except ValueError:
+            try:
+                dt = datetime.strptime(clean_date, "%d/%m/%y")
+            except ValueError:
+                return ""
+
+        days_map = {
+            0: "שני",
+            1: "שלישי",
+            2: "רביעי",
+            3: "חמישי",
+            4: "שישי",
+            5: "שבת",
+            6: "ראשון",
+        }
+        return self._reverse_hebrew(days_map[dt.weekday()])
+
+    def export(self, original_path: str, report: AttendanceReport, output_path: str) -> None:
+        page_layout = landscape(A4) if report.report_type == ReportType.TYPE_A else A4
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=page_layout,
+            rightMargin=20,
+            leftMargin=20,
+            topMargin=30,
+            bottomMargin=30,
+        )
+        elements = []
+        styles = getSampleStyleSheet()
+        title_str = (
+            "ג.ע. הנשר כח אדם בע\"מ - דוח מעודכן"
+            if report.report_type == ReportType.TYPE_A
+            else "כרטיס עובד לחודש - דוח מעודכן"
+        )
+        title = Paragraph(
+            f"<font name='{self.font_name}' size='16'><b>{self._reverse_hebrew(title_str)}</b></font>",
+            styles["Title"],
+        )
+        elements.append(title)
+        elements.append(Spacer(1, 20))
+        elements.append(
+            self._generate_type_a_table(report)
+            if report.report_type == ReportType.TYPE_A
+            else self._generate_type_b_table(report)
+        )
+        doc.build(elements)
+
+    def _generate_type_a_table(self, report: AttendanceReport) -> Table:
+        headers = ["תאריך", "יום", "מקום עבודה", "כניסה", "יציאה", "הפסקה", 'סה"כ', "%001", "%521", "%051"]
+        headers = [self._reverse_hebrew(h) for h in headers]
+        headers.reverse()
+
+        data = [headers]
+        time_format = "%H:%M"
+        for row in report.rows:
+            if not row.new_in or not row.new_out:
+                continue
+            t_in = datetime.strptime(row.new_in, time_format)
+            t_out = datetime.strptime(row.new_out, time_format)
+            total_hours = max((t_out - t_in).total_seconds() / 3600.0 - 0.5, 0)
+            base_100 = min(total_hours, 8.0)
+            over_125 = min(max(total_hours - 8.0, 0), 2.0)
+            over_150 = max(total_hours - 10.0, 0)
+            row_data = [
+                row.date,
+                self._reverse_hebrew(row.day_name) if row.day_name else "",
+                self._reverse_hebrew("כללי"),
+                row.new_in,
+                row.new_out,
+                "00:30",
+                f"{total_hours:.2f}",
+                f"{base_100:.2f}",
+                f"{over_125:.2f}",
+                f"{over_150:.2f}",
+            ]
+            row_data.reverse()
+            data.append(row_data)
+        table = Table(data, colWidths=[60] * 10)
+        table.setStyle(self._get_base_table_style())
+        return table
+
+    def _generate_type_b_table(self, report: AttendanceReport) -> Table:
+        headers = ["תאריך", "יום", "שעת כניסה", "שעת יציאה", 'סה"כ שעות', "הערות"]
+        headers = [self._reverse_hebrew(h) for h in headers]
+        headers.reverse()
+
+        data = [headers]
+        time_format = "%H:%M"
+        for row in report.rows:
+            if not row.new_in or not row.new_out:
+                continue
+            t_in = datetime.strptime(row.new_in, time_format)
+            t_out = datetime.strptime(row.new_out, time_format)
+            total_hours = (t_out - t_in).total_seconds() / 3600.0
+            row_data = [row.date, self._get_hebrew_day(row.date), row.new_in, row.new_out, f"{total_hours:.2f}", ""]
+            row_data.reverse()
+            data.append(row_data)
+
+        table = Table(data, colWidths=[80, 60, 80, 80, 80, 100])
+        table.setStyle(self._get_base_table_style())
+        return table
+
+    def _get_base_table_style(self) -> TableStyle:
+        return TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#A6A6A6")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (-1, -1), self.font_name),
+                ("FONTSIZE", (0, 0), (-1, 0), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("GRID", (0, 0), (-1, -1), 1, colors.black),
+            ]
+        )
